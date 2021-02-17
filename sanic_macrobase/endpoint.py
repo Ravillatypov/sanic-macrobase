@@ -1,7 +1,9 @@
 from http import HTTPStatus
+from typing import List, Callable, Awaitable
 
 from macrobase_driver.endpoint import Endpoint
 from macrobase_driver.logging import get_request_id, set_request_id
+from .exceptions import get_exception_handler
 
 from sanic.request import Request
 from sanic.response import BaseHTTPResponse, text as TextResponse, json as JsonResponse, file as FileResponse, raw as RawResponse
@@ -119,7 +121,7 @@ class SanicEndpoint(Endpoint):
         headers['x-cross-request-id'] = get_request_id()
 
         if data is not None:
-            return JsonResponse(data, headers=headers)
+            return JsonResponse(data, status=code,  headers=headers)
 
         if message is None:
             message = HTTPStatus(code).phrase
@@ -156,6 +158,31 @@ class SanicEndpoint(Endpoint):
 
         return await self._method(request, body, *args, **kwargs)
 
+    def _get_before_methods(self) -> List[Callable[..., Awaitable[None]]]:
+        return []
+
+    def _get_after_methods(self) -> List[Callable[..., Awaitable[None]]]:
+        return []
+
+    async def _before_method(self, request: Request, body: dict, *args, **kwargs):
+        for func in self._get_before_methods():
+            await func(request, body, *args, **kwargs)
+
+    async def _after_method(self, *args, **kwargs):
+        for func in self._get_after_methods():
+            await func(*args, **kwargs)
+
+    async def _handle_method_exceptions(self, exception: Exception, *args, **kwargs) -> BaseHTTPResponse:
+        handler = get_exception_handler(exception)
+        code = 500
+        data = None
+        message = str(exception)
+
+        if handler:
+            code, message, data = handler(exception)
+
+        return await self.make_response_json(code=code, message=message, data=data)
+
     async def _method(self, request: Request, body: dict, *args, **kwargs) -> BaseHTTPResponse:
         set_request_id()
         method = request.method.lower()
@@ -164,7 +191,13 @@ class SanicEndpoint(Endpoint):
         if hasattr(self, func_name):
             func = getattr(self, func_name)
 
-            return await func(request, body, *args, **kwargs)
+            try:
+                await self._before_method(request, body, *args, **kwargs)
+                return await func(request, body, *args, **kwargs)
+            except Exception as e:
+                return await self._handle_method_exceptions(e, *args, **kwargs)
+            finally:
+                await self._after_method(*args, **kwargs)
         else:
             return await self.make_response_json(code=405, message='Method Not Allowed')
 
