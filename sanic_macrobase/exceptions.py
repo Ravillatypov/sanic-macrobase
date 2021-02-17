@@ -1,5 +1,6 @@
 from sanic.exceptions import SanicException
 from typing import Callable, Optional, Tuple, Union, Type
+from collections import namedtuple
 
 
 class RoutingErrorException(SanicException):
@@ -10,7 +11,8 @@ class RoutingErrorException(SanicException):
 
 _exception_handlers = {}
 ExceptionTyping = Union[Exception, Type[Exception]]
-ExceptionHandlerTyping = Callable[[ExceptionTyping], Tuple[int, str, dict]]
+ExceptionInfo = namedtuple('ExceptionInfo', ['code', 'error_code', 'message', 'data'])
+ExceptionHandlerTyping = Callable[[ExceptionTyping], ExceptionInfo]
 
 
 def register_exception_handler(*exceptions: Type[Exception]):
@@ -44,4 +46,4 @@ def get_exception_handler(exception: ExceptionTyping) -> Optional[ExceptionHandl
 
 @register_exception_handler(SanicException)
 def _sanic_exceptions(exc: ExceptionTyping):
-    return exc.status_code, str(exc), None
+    return ExceptionInfo(exc.status_code, None, str(exc), None)

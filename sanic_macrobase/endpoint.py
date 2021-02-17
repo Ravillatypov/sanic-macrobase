@@ -168,20 +168,20 @@ class SanicEndpoint(Endpoint):
         for func in self._get_before_methods():
             await func(request, body, *args, **kwargs)
 
-    async def _after_method(self, *args, **kwargs):
+    async def _after_method(self, request: Request, *args, **kwargs):
         for func in self._get_after_methods():
-            await func(*args, **kwargs)
+            await func(request, *args, **kwargs)
 
     async def _handle_method_exceptions(self, exception: Exception, *args, **kwargs) -> BaseHTTPResponse:
         handler = get_exception_handler(exception)
         code = 500
-        data = None
+        data = error_code = None
         message = str(exception)
 
         if handler:
-            code, message, data = handler(exception)
+            code, error_code, message, data = handler(exception)
 
-        return await self.make_response_json(code=code, message=message, data=data)
+        return await self.make_response_json(code=code, error_code=error_code, message=message, data=data)
 
     async def _method(self, request: Request, body: dict, *args, **kwargs) -> BaseHTTPResponse:
         set_request_id()
@@ -197,7 +197,7 @@ class SanicEndpoint(Endpoint):
             except Exception as e:
                 return await self._handle_method_exceptions(e, *args, **kwargs)
             finally:
-                await self._after_method(*args, **kwargs)
+                await self._after_method(request, *args, **kwargs)
         else:
             return await self.make_response_json(code=405, message='Method Not Allowed')
 
