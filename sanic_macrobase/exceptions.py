@@ -46,4 +46,4 @@ def get_exception_handler(exception: ExceptionTyping) -> Optional[ExceptionHandl
 
 @register_exception_handler(SanicException)
 def _sanic_exceptions(exc: ExceptionTyping):
-    return ExceptionInfo(exc.status_code, None, str(exc), None)
+    return ExceptionInfo(getattr(exc, 'status_code', 500), getattr(exc, 'error_code'), str(exc), None)
